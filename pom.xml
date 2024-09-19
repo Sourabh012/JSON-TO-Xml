@@ -24,6 +24,12 @@
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
 
+		<dependency>
+			<groupId>com.infosys</groupId>
+			<artifactId>exception</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
+		</dependency>
+
 		<!-- Jackson XML support -->
 		<dependency>
 			<groupId>com.fasterxml.jackson.dataformat</groupId>
@@ -36,8 +42,15 @@
 			<artifactId>jaxb-runtime</artifactId>
 		</dependency>
 
+		<dependency>
+			<groupId>org.codehaus.jettison</groupId>
+			<artifactId>jettison</artifactId>
+			<version>1.4.1</version>
+		</dependency>
 
-	<!-- Logging with SLF4J -->
+
+
+		<!-- Logging with SLF4J -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-logging</artifactId>
