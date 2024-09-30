@@ -1,0 +1,148 @@
+import org.springframework.web.client.RestTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import javax.xml.transform.*;
+import javax.xml.transform.stream.StreamResult;
+import javax.xml.transform.stream.StreamSource;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.nio.ByteBuffer;
+import java.util.function.Consumer;
+
+public class ErrorHandler {
+
+    private static final Logger logger = LoggerFactory.getLogger(ErrorHandler.class);
+
+    public static void handleError(String vDefaultErrorCode, String vDelimiter, String vErrorMapping, boolean logFlag, ResponseContext response) {
+        logger.error("****STARTED error handling****");
+
+        RestTemplate restTemplate = new RestTemplate();
+
+        // Using response.getContext to retrieve HTTP status and content type
+        String vHttpStatusCode = response.getContext("message.status.code");
+        String vHttpStatusReason = response.getContext("message.status.reason");
+        String vContentType = response.getContext("message.headers.content-type");
+
+        // Simulating service metadata retrieval
+        String vTransactionID = getServiceMetadata("var://service/global-transaction-id");
+
+        try {
+            // Simulating apic.readInputAsBuffer functionality using a Consumer as a callback
+            readInputAsBuffer((error, res) -> {
+                if (error != null) {
+                    // Handle error case here
+                } else {
+                    String vStatusCode = "";
+                    boolean vXmlFlag = true;
+                    boolean vJsonFlag = true;
+
+                    // Check if content type contains 'xml' or 'json'
+                    if (!vContentType.contains("xml")) {
+                        vXmlFlag = false;
+                    }
+                    if (!vContentType.contains("json")) {
+                        vJsonFlag = false;
+                    }
+
+                    // Handle XML or JSON processing based on flags
+                    if (vXmlFlag || vJsonFlag) {
+                        if (vXmlFlag) {
+                            // Call XSLT file processing if XML
+                            callXSLTFile(vDefaultErrorCode, vDelimiter, vErrorMapping, vTransactionID, logFlag, response, (xsltError, transformedResult) -> {
+                                if (xsltError != null) {
+                                    logger.error("Error during XSLT processing", xsltError);
+                                } else {
+                                    // Process success or error based on isSuccessFlag
+                                    String isSuccessFlag = response.getContext("isSuccessFlag");
+
+                                    if ("false".equals(isSuccessFlag)) {
+                                        if (logFlag) {
+                                            logEncryptedLog();
+                                        }
+
+                                        // Setting headers and logging error message
+                                        response.setContext("message.headers.content-type", "application/json");
+                                        logger.error("**vHttpCode=" + response.getContext("vHttpCode") +
+                                                ", vHttpReasonPhrase=" + response.getContext("vHttpReasonPhrase") +
+                                                ", **vErrorMessage=" + response.getContext("vErrorMessage"));
+
+                                        throw new CustomError(response.getContext("vHttpCode"), 
+                                                response.getContext("vHttpReasonPhrase"), 
+                                                response.getContext("vErrorMessage") + " [TransactionID: " + vTransactionID + "]");
+                                    } else {
+                                        // Writing the transformed result if success
+                                        logger.debug("Successfully transformed XML.");
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+
+        } catch (Exception e) {
+            logger.error("Error occurred during input processing: ", e);
+        }
+    }
+
+    // Simulating the apic.readInputAsBuffer method using Java's Consumer and ByteBuffer
+    private static void readInputAsBuffer(BiConsumer<Exception, ByteBuffer> callback) {
+        try {
+            // Here we would have logic to read input as a buffer
+            ByteBuffer buffer = ByteBuffer.allocate(1024);  // Simulating buffer input
+            callback.accept(null, buffer);  // No error, passing the buffer as result
+        } catch (Exception e) {
+            callback.accept(e, null);  // Pass the error back if something goes wrong
+        }
+    }
+
+    // Method to call the XSLT file transformation
+    private static void callXSLTFile(String vDefaultErrorCode, String vDelimiter, String vErrorMapping, String vTransactionID, boolean logFlag, ResponseContext response, BiConsumer<Exception, String> callback) {
+        try {
+            // Simulate XSLT processing
+            TransformerFactory factory = TransformerFactory.newInstance();
+            Source xslt = new StreamSource(new StringReader("<!-- ErrorHandling_V2.xsl content here -->"));
+            Transformer transformer = factory.newTransformer(xslt);
+
+            // Set XSLT parameters
+            transformer.setParameter("vDefaultErrorCode", vDefaultErrorCode);
+            transformer.setParameter("vDelimiter", vDelimiter);
+            transformer.setParameter("vErrorMapping", vErrorMapping);
+
+            // Perform transformation
+            StringWriter writer = new StringWriter();
+            transformer.transform(new StreamSource(new StringReader("<input-xml></input-xml>")), new StreamResult(writer));
+
+            // Return the transformed result
+            callback.accept(null, writer.toString());
+        } catch (Exception e) {
+            callback.accept(e, null);
+        }
+    }
+
+    // Placeholder for service metadata retrieval
+    private static String getServiceMetadata(String key) {
+        if ("var://service/global-transaction-id".equals(key)) {
+            return "123456-transaction-id";  // Example transaction ID
+        }
+        return "";
+    }
+
+    // Simulating logEncryptedLog function
+    private static void logEncryptedLog() {
+        logger.info("Logging encrypted log...");
+    }
+
+    // Custom exception for handling errors
+    public static class CustomError extends RuntimeException {
+        public CustomError(String code, String reason, String message) {
+            super("Error: " + code + ", Reason: " + reason + ", Message: " + message);
+        }
+    }
+
+    // Define BiConsumer to simulate the callback function used in apic.readInputAsBuffer and XSLT
+    @FunctionalInterface
+    public interface BiConsumer<T, U> {
+        void accept(T t, U u);
+    }
+}
