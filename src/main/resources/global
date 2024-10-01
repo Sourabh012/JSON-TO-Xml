@@ -1,53 +1,29 @@
-package com.example.exceptionhandler;
+String url = "http://localhost:8081/perform-operation";
+        try {
+            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+            return ResponseEntity.ok(response.getBody());
+        } catch (HttpClientErrorException ex) {
+            String errorResponseBody = ex.getResponseBodyAsString();
+            int httpCode = Integer.parseInt(ErrorUtils.extractValue(errorResponseBody, "httpCode"));
+            String httpMessage = ErrorUtils.extractValue(errorResponseBody, "httpMessage");
+            String moreInformation = ErrorUtils.extractValue(errorResponseBody, "moreInformation");
 
-import org.springframework.http.ResponseEntity;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ControllerAdvice;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.RestClientException;
-
-import java.nio.charset.StandardCharsets;
-
-@ControllerAdvice
-public class GlobalExceptionHandler {
-
-    @ExceptionHandler(RestClientException.class)
-    public ResponseEntity<ErrorResponse> handleRestClientException(RestClientException ex) {
-        // Extract status code, status message, and detailed message from the exception
-        if (ex instanceof HttpStatusCodeException) {
-            HttpStatusCodeException httpEx = (HttpStatusCodeException) ex;
-
-            int httpCode = httpEx.getStatusCode().value();  // Get the raw status code
-            String httpMessage = httpEx.getStatusCode().getReasonPhrase(); // Get the status message as a string
-            
-            // Get the response body as a byte array and convert it to a String
-            String httpDetailedMessage = new String(httpEx.getResponseBodyAsByteArray(), StandardCharsets.UTF_8);
-
-            // Create ErrorResponse object with extracted details
-            ErrorResponse errorResponse = new ErrorResponse(httpCode, httpMessage, httpDetailedMessage);
-
-            // Return the response with the extracted details
-            return ResponseEntity.status(httpEx.getStatusCode()).body(errorResponse);
-        } else {
-            // Handle other RestClientException cases
-            ErrorResponse errorResponse = new ErrorResponse(500, "INTERNAL_SERVER_ERROR", ex.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
+            throw new BackendServiceException(
+                    httpCode,
+                    httpMessage,
+                    moreInformation
+            );
         }
     }
 
-    // ErrorResponse class defined here for demonstration
-    private static class ErrorResponse {
-        private int httpCode;
-        private String httpMessage;
-        private String moreInformation;
-
-        public ErrorResponse(int httpCode, String httpMessage, String moreInformation) {
-            this.httpCode = httpCode;
-            this.httpMessage = httpMessage;
-            this.moreInformation = moreInformation;
+    public class ErrorUtils {
+        public static String extractValue(String source, String fieldName) {
+            String prefix = fieldName + "=";
+            int start = source.indexOf(prefix) + prefix.length();
+            int end = source.indexOf(",", start);
+            if (start > -1 && end > -1) {
+                return source.substring(start, end).replaceAll("'", "").trim();
+            }
+            return "Unknown";
         }
-
-        // Getters and toString method can be added as needed
     }
-}
