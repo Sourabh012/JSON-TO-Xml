@@ -1,0 +1,31 @@
+private boolean detectBadgerFishFormat(JsonNode jsonNode) {
+    // Iterate over the field names (keys) of the JSON object
+    Iterator<String> fieldNames = jsonNode.fieldNames();
+    
+    while (fieldNames.hasNext()) {
+        String key = fieldNames.next();
+        JsonNode value = jsonNode.get(key);  // Get the value of the current key
+        
+        // Check if the key starts with '@' or is '$'
+        if (key.startsWith("@") || key.equals("$")) {
+            return true;
+        }
+        
+        // If the value is a nested object, recursively check inside it
+        if (value.isObject() && detectBadgerFishFormat(value)) {
+            return true;  // If any nested object follows the BadgerFish format, return true
+        }
+        
+        // If the value is an array, check each element in the array
+        if (value.isArray()) {
+            for (JsonNode arrayItem : value) {
+                if (arrayItem.isObject() && detectBadgerFishFormat(arrayItem)) {
+                    return true;  // If any object in the array follows the BadgerFish format, return true
+                }
+            }
+        }
+    }
+    
+    // If no BadgerFish keys are found, return false
+    return false;
+}
