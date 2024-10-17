@@ -1,7 +1,7 @@
-package com.example.demo.service;
+package com.my.spring.jsonconverter;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -15,32 +15,44 @@ import javax.xml.transform.stream.StreamResult;
 import java.io.StringWriter;
 import java.util.Iterator;
 
-@Service
-public class JsonToXMLConverter {
-
-    public String convertJsonToXml(JsonNode jsonInput) throws Exception {
-
+public class JsonToXML {
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    public String convertJsonToXml(JsonNode jsonObject) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         DocumentBuilder builder = factory.newDocumentBuilder();
         Document document = builder.newDocument();
 
-        boolean isBadgerFish = detectBadgerFishFormat(jsonInput);
+        boolean isBadgerFish = detectBadgerFishFormat(jsonObject);
 
         Element root = isBadgerFish
-                ? createElementFromBadgerFishJsonNode(jsonInput, document)
-                : createElementFromNormalJsonNode(jsonInput, document);
-
+                ? createElementFromBadgerFishJsonNode(jsonObject, document)
+                : createElementFromNormalJsonNode(jsonObject, document);
         document.appendChild(root);
 
         return documentToXmlString(document);
+
     }
 
     private boolean detectBadgerFishFormat(JsonNode jsonNode) {
         Iterator<String> fieldNames = jsonNode.fieldNames();
+
         while (fieldNames.hasNext()) {
             String key = fieldNames.next();
+            JsonNode value = jsonNode.get(key);
+
             if (key.startsWith("@") || key.equals("$")) {
                 return true;
+            }
+            if (value.isObject() && detectBadgerFishFormat(value)) {
+                return true;
+            }
+
+            if (value.isArray()) {
+                for (JsonNode arrayItem : value) {
+                    if (arrayItem.isObject() && detectBadgerFishFormat(arrayItem)) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
@@ -66,7 +78,7 @@ public class JsonToXMLConverter {
         }
 
         return rootElement;
-    } 
+    }
 
     private void processBadgerFishJsonNode(JsonNode jsonNode, Element parentElement, Document document) throws Exception {
         Iterator<String> fieldNames = jsonNode.fieldNames();
@@ -90,18 +102,11 @@ public class JsonToXMLConverter {
     }
 
     private void processBadgerFishJsonArray(JsonNode jsonArray, String key, Element parentElement, Document document) throws Exception {
-        for (int i = 0; i < jsonArray.size(); i++) {
-            JsonNode arrayItem = jsonArray.get(i);
-
+        for (JsonNode arrayItem : jsonArray) {
             if (arrayItem.isObject()) {
                 Element arrayElement = createElementWithValidation(key, document);
                 parentElement.appendChild(arrayElement);
                 processBadgerFishJsonNode(arrayItem, arrayElement, document);
-            } else {
-                // Handle array of primitive types
-                Element arrayElement = createElementWithValidation(key, document);
-                arrayElement.appendChild(document.createTextNode(sanitizeValue(arrayItem.asText())));
-                parentElement.appendChild(arrayElement);
             }
         }
     }
@@ -154,30 +159,25 @@ public class JsonToXMLConverter {
     }
 
     private void processNormalJsonArray(JsonNode jsonArray, String key, Element parentElement, Document document) throws Exception {
-        for (int i = 0; i < jsonArray.size(); i++) {
-            JsonNode arrayItem = jsonArray.get(i);
-
+        for (JsonNode arrayItem : jsonArray) {
+            Element arrayElement = createElementWithValidation(key, document);
             if (arrayItem.isObject()) {
-                Element arrayElement = createElementWithValidation(key, document);
                 parentElement.appendChild(arrayElement);
                 processNormalJsonNode(arrayItem, arrayElement, document);
             } else {
-                Element arrayElement = createElementWithValidation(key, document);
                 arrayElement.appendChild(document.createTextNode(sanitizeValue(arrayItem.asText())));
                 parentElement.appendChild(arrayElement);
             }
         }
     }
 
-    private Element createElementWithValidation(String key, Document document) throws Exception {
-        // Sanitize the key to ensure it is a valid XML element name
-        String sanitizedKey = key.replaceAll("[^a-zA-Z0-9_:.]", "_");
-        return document.createElement(sanitizedKey);
+    private String sanitizeValue(String value) {
+        return value.replaceAll("[^\\x20-\\x7E]", "_");
     }
 
-    private String sanitizeValue(String value) {
-        // Replace invalid XML characters
-        return value.replaceAll("[^\\x20-\\x7E]", "_");
+    private Element createElementWithValidation(String key, Document document) throws Exception {
+        String sanitizedKey = key.replaceAll("[^a-zA-Z0-9_:.]", "_");
+        return document.createElement(sanitizedKey);
     }
 
     private String documentToXmlString(Document document) throws Exception {
@@ -192,4 +192,5 @@ public class JsonToXMLConverter {
 
         return writer.toString();
     }
+
 }
