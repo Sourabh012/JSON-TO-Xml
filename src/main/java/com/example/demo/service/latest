@@ -80,34 +80,43 @@ public class JsonToXML {
         return rootElement;
     }
 
-    private void processBadgerFishJsonNode(JsonNode jsonNode, Element parentElement, Document document) throws Exception {
-        Iterator<String> fieldNames = jsonNode.fieldNames();
-
-        while (fieldNames.hasNext()) {
-            String key = fieldNames.next();
-            JsonNode value = jsonNode.get(key);
-
-            if (key.startsWith("@")) {
-                parentElement.setAttribute(key.substring(1), sanitizeValue(value.asText()));
-            } else if (key.equals("$")) {
-                parentElement.appendChild(document.createTextNode(sanitizeValue(value.asText())));
-            } else if (value.isObject()) {
-                Element childElement = createElementWithValidation(key, document);
-                parentElement.appendChild(childElement);
-                processBadgerFishJsonNode(value, childElement, document);
-            } else if (value.isArray()) {
-                processBadgerFishJsonArray(value, key, parentElement, document);
-            }
+    private void processBadgerFishJsonArray(JsonNode jsonArray, String key, Element parentElement, Document document) throws Exception {
+    for (JsonNode arrayItem : jsonArray) {
+        if (arrayItem.isObject()) {
+            Element arrayElement = createElementWithValidation(key, document);
+            parentElement.appendChild(arrayElement);
+            processBadgerFishJsonNode(arrayItem, arrayElement, document);
+        } else {
+            // Handle array item as text node if it's not an object
+            Element arrayElement = createElementWithValidation(key, document);
+            arrayElement.appendChild(document.createTextNode(sanitizeValue(arrayItem.asText())));
+            parentElement.appendChild(arrayElement);
         }
     }
+}
 
-    private void processBadgerFishJsonArray(JsonNode jsonArray, String key, Element parentElement, Document document) throws Exception {
-        for (JsonNode arrayItem : jsonArray) {
-            if (arrayItem.isObject()) {
-                Element arrayElement = createElementWithValidation(key, document);
-                parentElement.appendChild(arrayElement);
-                processBadgerFishJsonNode(arrayItem, arrayElement, document);
+private void processBadgerFishJsonNode(JsonNode jsonNode, Element parentElement, Document document) throws Exception {
+    Iterator<String> fieldNames = jsonNode.fieldNames();
+
+    while (fieldNames.hasNext()) {
+        String key = fieldNames.next();
+        JsonNode value = jsonNode.get(key);
+
+        if (key.startsWith("@")) {
+            parentElement.setAttribute(key.substring(1), sanitizeValue(value.asText()));
+        } else if (key.equals("$")) {
+            if (value.isArray()) {
+                // Handle $ symbol as an array
+                processBadgerFishJsonArray(value, parentElement.getNodeName(), parentElement, document);
+            } else {
+                parentElement.appendChild(document.createTextNode(sanitizeValue(value.asText())));
             }
+        } else if (value.isObject()) {
+            Element childElement = createElementWithValidation(key, document);
+            parentElement.appendChild(childElement);
+            processBadgerFishJsonNode(value, childElement, document);
+        } else if (value.isArray()) {
+            processBadgerFishJsonArray(value, key, parentElement, document);
         }
     }
 
