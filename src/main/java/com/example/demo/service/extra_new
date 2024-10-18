@@ -214,3 +214,51 @@ public class JsonToXMLConverter {
         return writer.toString();
     }
 }
+
+
+
+
+public String convertJsonToXml(JsonNode jsonObject) throws Exception {
+    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+    DocumentBuilder builder = factory.newDocumentBuilder();
+    Document document = builder.newDocument();
+
+    boolean isBadgerFish = detectBadgerFishFormat(jsonObject);
+
+    Element root = document.createElement("root");
+
+    if (jsonObject.isArray()) {
+        processJsonArray(jsonObject, root, document, isBadgerFish); // Process the array
+    } else {
+        Element rootElement = isBadgerFish
+                ? createElementFromBadgerFishJsonNode(jsonObject, document)
+                : createElementFromNormalJsonNode(jsonObject, document);
+        root.appendChild(rootElement);
+    }
+
+    document.appendChild(root);
+
+    return documentToXmlString(document);
+}
+
+private void processJsonArray(JsonNode jsonArray, Element parentElement, Document document, boolean isBadgerFish) throws Exception {
+    for (JsonNode arrayItem : jsonArray) {
+        if (arrayItem.isObject()) {
+            // Process objects within the array
+            if (isBadgerFish) {
+                processBadgerFishJsonNode(arrayItem, parentElement, document);
+            } else {
+                processNormalJsonNode(arrayItem, parentElement, document);
+            }
+        } else if (arrayItem.isArray()) {
+            // Recursively handle nested arrays
+            processJsonArray(arrayItem, parentElement, document, isBadgerFish);
+        } else {
+            // Directly append simple values as text nodes
+            Element valueElement = document.createElement("value");
+            valueElement.appendChild(document.createTextNode(sanitizeValue(arrayItem.asText())));
+            parentElement.appendChild(valueElement);
+        }
+    }
+}
+
