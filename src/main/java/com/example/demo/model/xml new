@@ -1,0 +1,83 @@
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+
+public class XMLToJSONConverter {
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public JsonNode convertXMLToJsonByBF(Document document) throws IOException {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        
+        // Implement BadgerFishDOMDocumentSerializer to serialize the document properly
+        BadgerFishDOMDocumentSerializer serializer = new BadgerFishDOMDocumentSerializer(outputStream);
+        serializer.serialize(document.getDocumentElement());
+        
+        String jsonString = outputStream.toString();
+        JsonNode jsonNode = objectMapper.readTree(jsonString);
+        
+        // Add namespaces to each element
+        return addNamespacesToJson(jsonNode, document.getDocumentElement());
+    }
+
+    private JsonNode addNamespacesToJson(JsonNode jsonNode, Element element) {
+        ObjectNode resultNode = objectMapper.createObjectNode();
+        resultNode.setAll((ObjectNode) jsonNode);
+
+        // Collect all namespaces from the element
+        ObjectNode namespaceNode = collectAllNamespaces(element);
+
+        // Recursively add namespaces to each child
+        addNamespacesToChildren(resultNode, namespaceNode);
+        
+        return resultNode;
+    }
+
+    private ObjectNode collectAllNamespaces(Element element) {
+        ObjectNode namespaceNode = objectMapper.createObjectNode();
+        if (element.hasAttributes()) {
+            for (int i = 0; i < element.getAttributes().getLength(); i++) {
+                String attrName = element.getAttributes().item(i).getNodeName();
+                String attrValue = element.getAttributes().item(i).getNodeValue();
+                if (attrName.startsWith("xmlns:")) {
+                    namespaceNode.put(attrName.substring(6), attrValue);
+                }
+            }
+        }
+        return namespaceNode;
+    }
+
+    private void addNamespacesToChildren(ObjectNode parentNode, ObjectNode namespaceNode) {
+        for (String fieldName : parentNode.fieldNames()) {
+            JsonNode childNode = parentNode.get(fieldName);
+
+            if (childNode.isObject()) {
+                ObjectNode newChildNode = objectMapper.createObjectNode();
+                newChildNode.set("@xmlns", namespaceNode.deepCopy()); // Add all namespaces here
+                newChildNode.setAll((ObjectNode) childNode);
+                parentNode.set(fieldName, newChildNode);
+                addNamespacesToChildren(newChildNode, namespaceNode);
+            } else if (childNode.isArray()) {
+                for (JsonNode arrayElement : childNode) {
+                    if (arrayElement.isObject()) {
+                        ObjectNode newChildNode = objectMapper.createObjectNode();
+                        newChildNode.set("@xmlns", namespaceNode.deepCopy()); // Add all namespaces here
+                        newChildNode.setAll((ObjectNode) arrayElement);
+                        parentNode.withArray(fieldName).add(newChildNode);
+                        addNamespacesToChildren(newChildNode, namespaceNode);
+                    }
+                }
+            } else if (childNode.isTextual()) {
+                ObjectNode textNode = objectMapper.createObjectNode();
+                textNode.set("@xmlns", namespaceNode.deepCopy()); // Add all namespaces here
+                textNode.put("$", childNode.asText());
+                parentNode.set(fieldName, textNode);
+            }
+        }
+    }
+}
