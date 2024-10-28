@@ -1,3 +1,43 @@
+public JsonNode convert() throws ParserConfigurationException, IOException, SAXException, TransformerException {
+
+    String url = "http://localhost:8082/test";  // URL string for the request
+    ResponseEntity<String> xmlResponse;
+
+    // Fetch XML response from the specified URL
+    xmlResponse = restTemplate.getForEntity(url, String.class);
+
+    // Convert ResponseEntity to InputStream
+    InputStream xmlInputStream = convertResponseEntityToInputStream(xmlResponse);
+
+    // Convert InputStream to Document
+    Document document = convertInputStreamToDocument(xmlInputStream);
+
+    // Convert XML Document to JSON using BadgerFish method
+    JsonNode jsonOutput = xmlToJsonConversion.convertXMLToJson(document, ConversionMethod.BADGERFISH);
+
+    // Print and return JSON output
+    System.out.println(jsonOutput);
+
+    return jsonOutput;
+}
+
+
+private InputStream convertResponseEntityToInputStream(ResponseEntity<String> responseEntity) {
+    String xmlString = responseEntity.getBody();
+    return new ByteArrayInputStream(xmlString.getBytes());
+}
+
+private Document convertInputStreamToDocument(InputStream xmlInputStream) throws ParserConfigurationException, IOException, SAXException {
+    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+    DocumentBuilder builder = factory.newDocumentBuilder();
+    Document document = builder.parse(new InputSource(xmlInputStream));
+    document.getDocumentElement().normalize();
+    return document;
+}
+
+
+
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -24,4 +64,78 @@ public class XMLToJSONConverter {
         // Add namespaces to each element
         return jsonNode;
     }
+}
+
+
+
+
+
+
+
+
+
+
+{
+  "pl:accumulatorsResponse": {
+    "pl:eieHeader": {
+      "n5:action": { "$": "READ" },
+      "n5:applicationIdentifier": {
+        "n4:idSource": { "$": "108" }
+      }
+    }
+  }
+}
+
+
+<pl:accumulatorsResponse xmlns:n9="http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14"
+                         xmlns:pl="http://schema.aetna.com/member/accumulators/v4">
+    <pl:eieHeader>
+        <n5:action>READ</n5:action>
+        <n5:applicationIdentifier>
+            <n4:idSource>108</n4:idSource>
+            <n4:idValue>c49d3f35-22a7-4ddd-a6ea-398589bc7be5</n4:idValue>
+            <n4:idType>applications</n4:idType>
+        </n5:applicationIdentifier>
+    </pl:eieHeader>
+</pl:accumulatorsResponse>
+
+
+
+
+
+
+
+{
+  "pl:accumulatorsResponse": {
+    "@xmlns": {
+      "n9": "http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14",
+      "pl": "http://schema.aetna.com/member/accumulators/v4"
+    },
+    "pl:eieHeader": {
+      "@xmlns": {
+        "n9": "http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14",
+        "pl": "http://schema.aetna.com/member/accumulators/v4"
+      },
+      "n5:action": {
+        "@xmlns": {
+          "n9": "http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14",
+          "pl": "http://schema.aetna.com/member/accumulators/v4"
+        },
+        "$": "READ"
+      },
+      "n5:applicationIdentifier": {
+        "@xmlns": {
+          "n9": "http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14",
+          "pl": "http://schema.aetna.com/member/accumulators/v4"
+        },
+        "n4:idSource": {
+          "@xmlns": {
+            "n9": "http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14",
+            "pl": "http://schema.aetna.com/member/accumulators/v4"
+          },
+          "$": "108"
+        }
+      }
+    }
+  }
 }
