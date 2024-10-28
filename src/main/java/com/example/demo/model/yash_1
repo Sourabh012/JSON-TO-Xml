@@ -1,0 +1,122 @@
+package com.example.demo.test;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.codehaus.jettison.badgerfish.BadgerFishDOMDocumentSerializer;
+import org.springframework.http.ResponseEntity;
+import org.w3c.dom.*;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.TransformerException;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+
+public class Test2 {
+    public static JsonNode convert() throws ParserConfigurationException, IOException, SAXException {
+        String xmlResponse = "<pl:accumulatorsResponse xmlns:n9=\"http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14\"\n" +
+                "                         xmlns:pl=\"http://schema.aetna.com/member/accumulators/v4\"\n" +
+                "                         xmlns:n5=\"http://schema.aetna.com/member/action/v1\"\n" +
+                "                         xmlns:n4=\"http://schema.aetna.com/member/id/v1\">\n" +
+                "    <pl:eieHeader>\n" +
+                "        <n5:action>READ</n5:action>\n" +
+                "        <n5:applicationIdentifier>\n" +
+                "            <n4:idSource>108</n4:idSource>\n" +
+                "            <n4:idValue>c49d3f35-22a7-4ddd-a6ea-398589bc7be5</n4:idValue>\n" +
+                "            <n4:idType>applications</n4:idType>\n" +
+                "        </n5:applicationIdentifier>\n" +
+                "    </pl:eieHeader>\n" +
+                "</pl:accumulatorsResponse>";
+
+        // Convert XML response to InputStream
+        InputStream xmlInputStream = new ByteArrayInputStream(xmlResponse.getBytes());
+
+        // Parse the InputStream to a Document
+        Document document = convertInputStreamToDocument(xmlInputStream);
+
+        // Initialize the ObjectMapper for JSON
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        // Create the root JSON object
+        ObjectNode jsonOutput = objectMapper.createObjectNode();
+
+        // Collect namespaces from the root element
+        Map<String, String> namespaces = new HashMap<>();
+        collectNamespaces(document.getDocumentElement(), namespaces);
+
+        // Convert the XML to JSON with inherited namespaces
+        convertXmlElementToJson(document.getDocumentElement(), jsonOutput, objectMapper, namespaces);
+
+        // Print and return the final JSON output
+        System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonOutput));
+
+        return jsonOutput;
+    }
+
+    private static Document convertInputStreamToDocument(InputStream xmlInputStream)
+            throws ParserConfigurationException, IOException, SAXException {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);  // Important for namespace handling
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        Document document = builder.parse(new InputSource(xmlInputStream));
+        document.getDocumentElement().normalize();
+        return document;
+    }
+
+    // Collect namespaces from the element's attributes and add them to the map
+    private static void collectNamespaces(Element element, Map<String, String> namespaces) {
+        NamedNodeMap attributes = element.getAttributes();
+        for (int i = 0; i < attributes.getLength(); i++) {
+            Attr attr = (Attr) attributes.item(i);
+            if (attr.getName().startsWith("xmlns:")) {
+                String prefix = attr.getName().substring(6);  // Extract namespace prefix
+                namespaces.put(prefix, attr.getValue());      // Add to namespace map
+            }
+        }
+    }
+
+    // Recursive method to convert XML elements to JSON with namespaces
+    private static void convertXmlElementToJson(
+            Element element, ObjectNode parentJson, ObjectMapper objectMapper, Map<String, String> inheritedNamespaces) {
+
+        // Create a new JSON object for the current element
+        ObjectNode currentJson = parentJson.putObject(element.getNodeName());
+
+        // Add the @xmlns field with the inherited namespaces
+        ObjectNode xmlnsNode = currentJson.putObject("@xmlns");
+        inheritedNamespaces.forEach(xmlnsNode::put);
+
+        // Collect any additional namespaces from the current element
+        Map<String, String> currentNamespaces = new HashMap<>(inheritedNamespaces);  // Start with inherited namespaces
+        collectNamespaces(element, currentNamespaces);  // Add new namespaces if present
+
+        // Process child nodes recursively
+        NodeList childNodes = element.getChildNodes();
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            Node child = childNodes.item(i);
+
+            if (child.getNodeType() == Node.ELEMENT_NODE) {
+                // Recursive call for child elements with the current namespace map
+                convertXmlElementToJson((Element) child, currentJson, objectMapper, currentNamespaces);
+            } else if (child.getNodeType() == Node.TEXT_NODE) {
+                // Add the text content under "$" if it's not empty
+                String textContent = child.getTextContent().trim();
+                if (!textContent.isEmpty()) {
+                    currentJson.put("$", textContent);
+                }
+            }
+        }
+    }
+
+
+    public static void main(String[] args) throws ParserConfigurationException, IOException, SAXException {
+        convert();
+    }
+}
