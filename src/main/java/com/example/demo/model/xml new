@@ -73,19 +73,35 @@ public class XMLToJSONConverter {
 
 
 
-
-
+Json Node data:
 {
   "pl:accumulatorsResponse": {
     "pl:eieHeader": {
       "n5:action": { "$": "READ" },
+      "n5:accessToken": {},
       "n5:applicationIdentifier": {
-        "n4:idSource": { "$": "108" }
+        "n4:idSource": { "$": "108" },
+        "n4:idValue": { "$": "c49d3f35-22a7-4ddd-a6ea-398589bc7be5" },
+        "n4:idType": { "$": "applications" }
       }
+    },
+    "@xmlns": {
+      "xmlns:nl": "http://www.aetna.com/cmm/interface/AdditionalStatus/v14",
+      "xmlns:n2": "http://www.aetna.com/cmm/interface/EIEHeaderAuthorizedRole/v14",
+      "xmlns:n3": "http://www.aetna.com/cmm/interface/EIEHeaderVersion/v14",
+      "xmlns:n4": "http://www.aetna.com/cmm/common/Identifier/v14",
+      "xmlns:n5": "http://www.aetna.com/cmm/interface/EIEHeader/v14",
+      "xmlns:n6": "http://www.aetna.com/cmm/interface/EIEHeaderUserContext/v14",
+      "xmlns:n7": "http://www.aetna.com/cmm/interface/Status/v14",
+      "xmlns:n8": "http://www.w3.org/2001/XMLSchema-instance",
+      "xmlns:n9": "http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14",
+      "xmlns:pl": "http://schema.aetna.com/member/accumulators/v4"
     }
   }
 }
 
+
+Input:
 
 <pl:accumulatorsResponse xmlns:n9="http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14"
                          xmlns:pl="http://schema.aetna.com/member/accumulators/v4">
@@ -104,7 +120,7 @@ public class XMLToJSONConverter {
 
 
 
-
+Expected output:
 {
   "pl:accumulatorsResponse": {
     "@xmlns": {
