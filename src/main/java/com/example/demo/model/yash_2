@@ -1,0 +1,133 @@
+package com.example.demo.test;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.codehaus.jettison.badgerfish.BadgerFishDOMDocumentSerializer;
+import org.springframework.http.ResponseEntity;
+import org.w3c.dom.*;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.TransformerException;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+
+public class Test3 {
+
+
+    public static void main(String[] args) throws Exception {
+        convert();
+    }
+
+    public static JsonNode convert() throws ParserConfigurationException, IOException, SAXException {
+        String xmlResponse = "<pl:accumulatorsResponse xmlns:n9=\"http://www.aetna.com/cmm/interface/EIEHeaderBusinessIdentifier/v14\"\n" +
+                "                         xmlns:pl=\"http://schema.aetna.com/member/accumulators/v4\"\n" +
+                "                         xmlns:n5=\"http://schema.aetna.com/member/action/v1\"\n" +
+                "                         xmlns:n4=\"http://schema.aetna.com/member/id/v1\">\n" +
+                "    <pl:eieHeader id=\"123\">\n" +
+                "        <n5:action>READ</n5:action>\n" +
+                "        <n5:applicationIdentifier>\n" +
+                "            <n4:idSource>108</n4:idSource>\n" +
+                "            <n4:idValue>c49d3f35-22a7-4ddd-a6ea-398589bc7be5</n4:idValue>\n" +
+                "            <n4:idType>applications</n4:idType>\n" +
+                "        </n5:applicationIdentifier>\n" +
+                "    </pl:eieHeader>\n" +
+                "</pl:accumulatorsResponse>";
+
+        // Convert XML to InputStream
+        InputStream xmlInputStream = new ByteArrayInputStream(xmlResponse.getBytes());
+
+        // Parse the XML to a Document
+        Document document = convertInputStreamToDocument(xmlInputStream);
+
+        // Initialize ObjectMapper for JSON
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        // Create the root JSON object
+        ObjectNode jsonOutput = objectMapper.createObjectNode();
+
+        // Collect namespaces from the root element
+        Map<String, String> namespaces = new HashMap<>();
+        collectNamespaces(document.getDocumentElement(), namespaces);
+
+        // Convert XML to JSON with proper handling
+        convertXmlElementToJson(document.getDocumentElement(), jsonOutput, objectMapper, namespaces);
+
+        // Print and return the JSON output
+        System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonOutput));
+
+        return jsonOutput;
+    }
+
+    private static Document convertInputStreamToDocument(InputStream xmlInputStream)
+            throws ParserConfigurationException, IOException, SAXException {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);  // Enable namespace awareness
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        Document document = builder.parse(new InputSource(xmlInputStream));
+        document.getDocumentElement().normalize();
+        return document;
+    }
+
+    // Collect namespaces from the element's attributes
+    private static void collectNamespaces(Element element, Map<String, String> namespaces) {
+        NamedNodeMap attributes = element.getAttributes();
+        for (int i = 0; i < attributes.getLength(); i++) {
+            Attr attr = (Attr) attributes.item(i);
+            if (attr.getName().startsWith("xmlns:")) {
+                String prefix = attr.getName().substring(6);  // Extract the prefix after 'xmlns:'
+                namespaces.put(prefix, attr.getValue());
+            }
+        }
+    }
+
+    // Convert XML elements to JSON with proper attribute and namespace handling
+    private static void convertXmlElementToJson(
+            Element element, ObjectNode parentJson, ObjectMapper objectMapper, Map<String, String> inheritedNamespaces) {
+
+        // Create a new JSON object for the current element
+        ObjectNode currentJson = parentJson.putObject(element.getNodeName());
+
+        // Handle attributes: Add all attributes of the current element as JSON fields with '@' prefix
+        NamedNodeMap attributes = element.getAttributes();
+        for (int i = 0; i < attributes.getLength(); i++) {
+            Attr attr = (Attr) attributes.item(i);
+            currentJson.put("@" + attr.getName(), attr.getValue());
+        }
+
+        // Collect any additional namespaces from the current element
+        Map<String, String> currentNamespaces = new HashMap<>(inheritedNamespaces);
+        collectNamespaces(element, currentNamespaces);  // Add new namespaces if present
+
+        // Only add '@xmlns' if there are any namespaces to include
+        if (!currentNamespaces.isEmpty()) {
+            ObjectNode xmlnsNode = currentJson.putObject("@xmlns");
+            currentNamespaces.forEach(xmlnsNode::put);
+        }
+
+        // Process child nodes recursively
+        NodeList childNodes = element.getChildNodes();
+        for (int i = 0; i < childNodes.getLength(); i++) {
+            Node child = childNodes.item(i);
+
+            if (child.getNodeType() == Node.ELEMENT_NODE) {
+                // Recursive call for child elements with the current namespace map
+                convertXmlElementToJson((Element) child, currentJson, objectMapper, currentNamespaces);
+            } else if (child.getNodeType() == Node.TEXT_NODE) {
+                // Add text content under "$" if it's not empty
+                String textContent = child.getTextContent().trim();
+                if (!textContent.isEmpty()) {
+                    currentJson.put("$", textContent);
+                }
+            }
+        }
+    }
+}
