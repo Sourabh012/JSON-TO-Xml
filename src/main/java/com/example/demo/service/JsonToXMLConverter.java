@@ -27,166 +27,152 @@ public class JsonToXMLConverter {
         Document document = builder.newDocument();
 
         boolean isBadgerFish = detectBadgerFishFormat(jsonObject);
+        Element root;
 
-        Element root = isBadgerFish
-                ? createElementFromBadgerFishJsonObject(jsonObject, document)
-                : createElementFromNormalJsonObject(jsonObject, document);
-
-        document.appendChild(root);
+        // Determine the root element based on the number of keys
+        if (jsonObject.length() == 1) {
+            // Use the single key as the root element
+            String singleKey = (String) jsonObject.keys().next();  // Corrected here
+            root = createElementWithValidation(singleKey, document);
+            document.appendChild(root);
+            processJsonObject(jsonObject.getJSONObject(singleKey), root, document, isBadgerFish);
+        } else {
+            // Create a default root element
+            root = createElementWithValidation("root", document);
+            document.appendChild(root);
+            processJsonObject(jsonObject, root, document, isBadgerFish);
+        }
 
         return documentToXmlString(document);
     }
 
-    private boolean detectBadgerFishFormat(JSONObject jsonObject) {
+    private boolean detectBadgerFishFormat(JSONObject jsonObject) throws Exception {
         Iterator<String> keys = jsonObject.keys();
-        while (keys.hasNext()) {
-            String key = keys.next();
-            if (key.startsWith("@") || key.equals("$")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private Element createElementFromBadgerFishJsonObject(JSONObject jsonObject, Document document) throws Exception {
-        Iterator<String> keys = jsonObject.keys();
-        Element rootElement = null;
 
         while (keys.hasNext()) {
             String key = keys.next();
             Object value = jsonObject.get(key);
 
-            if (rootElement == null) {
-                rootElement = createElementWithValidation(key, document);
+            if (key.startsWith("@") || key.equals("$")) {
+                return true;
             }
 
-            if (value instanceof JSONObject) {
-                processBadgerFishJsonObject((JSONObject) value, rootElement, document);
-            } else if (value instanceof JSONArray) {
-                processBadgerFishJsonArray((JSONArray) value, key, rootElement, document);
+            if (value instanceof JSONObject && detectBadgerFishFormat((JSONObject) value)) {
+                return true;
+            }
+
+            if (value instanceof JSONArray) {
+                JSONArray jsonArray = (JSONArray) value;
+                for (int i = 0; i < jsonArray.length(); i++) {
+                    Object arrayItem = jsonArray.get(i);
+                    if (arrayItem instanceof JSONObject && detectBadgerFishFormat((JSONObject) arrayItem)) {
+                        return true;
+                    }
+                }
             }
         }
 
-        return rootElement;
+        return false;
+    }
+
+    private void processJsonObject(JSONObject jsonObject, Element parentElement, Document document, boolean isBadgerFish) throws Exception {
+        if (isBadgerFish) {
+            processBadgerFishJsonObject(jsonObject, parentElement, document);
+        } else {
+            processNormalJsonObject(jsonObject, parentElement, document);
+        }
+    }
+
+    private void processNormalJsonObject(JSONObject jsonObject, Element parentElement, Document document) throws Exception {
+        Iterator<String> keys = jsonObject.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            Object value = jsonObject.get(key);
+
+            if (value instanceof JSONArray) {
+                // Directly process the array without wrapping it
+                processNormalJsonArray((JSONArray) value, parentElement, document, key);
+            } else {
+                Element childElement = createElementWithValidation(key, document);
+                if (value instanceof JSONObject) {
+                    parentElement.appendChild(childElement);
+                    processNormalJsonObject((JSONObject) value, childElement, document);
+                } else {
+                    childElement.appendChild(document.createTextNode(sanitizeValue(value)));
+                    parentElement.appendChild(childElement);
+                }
+            }
+        }
+    }
+
+    private void processNormalJsonArray(JSONArray jsonArray, Element parentElement, Document document, String key) throws Exception {
+        for (int i = 0; i < jsonArray.length(); i++) {
+            Object arrayItem = jsonArray.get(i);
+            if (arrayItem instanceof JSONObject) {
+                Element teamElement = createElementWithValidation(key, document); // Create a team element
+                parentElement.appendChild(teamElement);
+                processNormalJsonObject((JSONObject) arrayItem, teamElement, document);
+            }
+        }
     }
 
     private void processBadgerFishJsonObject(JSONObject jsonObject, Element parentElement, Document document) throws Exception {
         Iterator<String> keys = jsonObject.keys();
-
         while (keys.hasNext()) {
             String key = keys.next();
             Object value = jsonObject.get(key);
 
             if (key.startsWith("@")) {
-                parentElement.setAttribute(key.substring(1), sanitizeValue(value.toString()));
+                // Handle attributes
+                parentElement.setAttribute(key.substring(1), sanitizeValue(value));
             } else if (key.equals("$")) {
-                parentElement.appendChild(document.createTextNode(sanitizeValue(value.toString())));
-            } else if (value instanceof JSONObject) {
+                // Handle value
+                parentElement.appendChild(document.createTextNode(sanitizeValue(value)));
+            } else {
                 Element childElement = createElementWithValidation(key, document);
                 parentElement.appendChild(childElement);
-                processBadgerFishJsonObject((JSONObject) value, childElement, document);
-            } else if (value instanceof JSONArray) {
-                processBadgerFishJsonArray((JSONArray) value, key, parentElement, document);
+                if (value instanceof JSONObject) {
+                    processBadgerFishJsonObject((JSONObject) value, childElement, document);
+                } else if (value instanceof JSONArray) {
+                    processBadgerFishJsonArray((JSONArray) value, childElement, document);
+                } else {
+                    childElement.appendChild(document.createTextNode(sanitizeValue(value)));
+                }
             }
         }
     }
 
-    private void processBadgerFishJsonArray(JSONArray jsonArray, String key, Element parentElement, Document document) throws Exception {
+    private void processBadgerFishJsonArray(JSONArray jsonArray, Element parentElement, Document document) throws Exception {
         for (int i = 0; i < jsonArray.length(); i++) {
             Object arrayItem = jsonArray.get(i);
-
+            Element arrayElement = createElementWithValidation("item", document); // or some other naming strategy
+            parentElement.appendChild(arrayElement);
             if (arrayItem instanceof JSONObject) {
-                Element arrayElement = createElementWithValidation(key, document);
-                parentElement.appendChild(arrayElement);
                 processBadgerFishJsonObject((JSONObject) arrayItem, arrayElement, document);
-            }
-        }
-    }
-
-    private Element createElementFromNormalJsonObject(JSONObject jsonObject, Document document) throws Exception {
-        Iterator<String> keys = jsonObject.keys();
-        Element rootElement = null;
-
-        while (keys.hasNext()) {
-            String key = keys.next();
-            Object value = jsonObject.get(key);
-
-            if (rootElement == null) {
-                rootElement = createElementWithValidation(key, document);
-            }
-
-            if (value instanceof JSONObject) {
-                processNormalJsonObject((JSONObject) value, rootElement, document);
-            } else if (value instanceof JSONArray) {
-                processNormalJsonArray((JSONArray) value, key, rootElement, document);
             } else {
-                Element childElement = createElementWithValidation(key, document);
-                childElement.appendChild(document.createTextNode(sanitizeValue(value.toString())));
-                rootElement.appendChild(childElement);
-            }
-        }
-
-        return rootElement;
-    }
-
-    private void processNormalJsonObject(JSONObject jsonObject, Element parentElement, Document document) throws Exception {
-        Iterator<String> keys = jsonObject.keys();
-
-        while (keys.hasNext()) {
-            String key = keys.next();
-            Object value = jsonObject.get(key);
-
-            if (value instanceof JSONObject) {
-                Element childElement = createElementWithValidation(key, document);
-                parentElement.appendChild(childElement);
-                processNormalJsonObject((JSONObject) value, childElement, document);
-            } else if (value instanceof JSONArray) {
-                processNormalJsonArray((JSONArray) value, key, parentElement, document);
-            } else {
-                Element childElement = createElementWithValidation(key, document);
-                childElement.appendChild(document.createTextNode(sanitizeValue(value.toString())));
-                parentElement.appendChild(childElement);
+                arrayElement.appendChild(document.createTextNode(sanitizeValue(arrayItem)));
             }
         }
     }
 
-    private void processNormalJsonArray(JSONArray jsonArray, String key, Element parentElement, Document document) throws Exception {
-        for (int i = 0; i < jsonArray.length(); i++) {
-            Object arrayItem = jsonArray.get(i);
-
-            if (arrayItem instanceof JSONObject) {
-                Element arrayElement = createElementWithValidation(key, document);
-                parentElement.appendChild(arrayElement);
-                processNormalJsonObject((JSONObject) arrayItem, arrayElement, document);
-            } else {
-                Element arrayElement = createElementWithValidation(key, document);
-                arrayElement.appendChild(document.createTextNode(sanitizeValue(arrayItem.toString())));
-                parentElement.appendChild(arrayElement);
-            }
-        }
+    private Element createElementWithValidation(String name, Document document) {
+        return document.createElement(name);
     }
 
-    private Element createElementWithValidation(String key, Document document) throws Exception {
-        // Sanitize the key to ensure it is a valid XML element name
-        String sanitizedKey = key.replaceAll("[^a-zA-Z0-9_:.]", "_");
-        return document.createElement(sanitizedKey);
-    }
-
-    private String sanitizeValue(String value) {
-        // Replace invalid XML characters
-        return value.replaceAll("[^\\x20-\\x7E]", "_");
+    private String sanitizeValue(Object value) {
+        return value != null ? value.toString() : "";
     }
 
     private String documentToXmlString(Document document) throws Exception {
         TransformerFactory transformerFactory = TransformerFactory.newInstance();
         Transformer transformer = transformerFactory.newTransformer();
-
         transformer.setOutputProperty(OutputKeys.INDENT, "yes");
         transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no");
-
+        transformer.setOutputProperty(OutputKeys.METHOD, "xml");
         StringWriter writer = new StringWriter();
-        transformer.transform(new DOMSource(document), new StreamResult(writer));
-
+        StreamResult result = new StreamResult(writer);
+        DOMSource source = new DOMSource(document);
+        transformer.transform(source, result);
         return writer.toString();
     }
 }
