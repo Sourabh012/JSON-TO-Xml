@@ -1,0 +1,131 @@
+package com.mysqltodb.demo.service;
+
+
+import jakarta.persistence.EntityManagerFactory;
+import lombok.RequiredArgsConstructor;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.batch.core.*;
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
+import org.springframework.batch.core.job.builder.JobBuilder;
+import org.springframework.batch.core.launch.support.RunIdIncrementer;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.batch.core.repository.support.JobRepositoryFactoryBean;
+import org.springframework.batch.core.step.builder.StepBuilder;
+import org.springframework.batch.item.Chunk;
+import org.springframework.batch.item.ItemProcessor;
+import org.springframework.batch.item.ItemReader;
+import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.item.database.JdbcPagingItemReader;
+import org.springframework.batch.item.database.JpaPagingItemReader;
+import org.springframework.batch.item.database.Order;
+import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
+import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.transaction.PlatformTransactionManager;
+
+import javax.sql.DataSource;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Configuration
+//@EnableBatchProcessing
+@RequiredArgsConstructor
+public class BatchConfig {
+
+    private final DataSource dataSource;
+    private final JobRepository jobRepository;
+    private final PlatformTransactionManager transactionManager;
+
+    @Bean
+    public JpaPagingItemReader<Transaction> reader(EntityManagerFactory entityManagerFactory) {
+        LocalDateTime today10PM = LocalDateTime.now().truncatedTo(ChronoUnit.DAYS).plusHours(22);
+        LocalDateTime yesterday10PM = today10PM.minusDays(1);
+
+        return new JpaPagingItemReaderBuilder<Transaction>()
+                .name("transactionReader")
+                .entityManagerFactory(entityManagerFactory)
+                .queryString("SELECT t FROM Transaction t WHERE t.createdDate BETWEEN :yesterday10PM AND :today10PM ORDER BY t.id")
+                .parameterValues(Map.of("yesterday10PM", yesterday10PM, "today10PM", today10PM))
+                .pageSize(5000) // Fetch 5000 records per chunk
+                .build();
+    }
+
+
+
+    // 2️⃣ Item Processor (Optional: Modify data if needed)
+    @Bean
+    public ItemProcessor<Transaction, Transaction> processor() {
+        return transaction -> transaction; // No transformation required
+    }
+
+    // 3️⃣ Item Writer (Writes records to Excel)
+    @Bean
+    public ItemWriter<Transaction> writer() {
+        return new ItemWriter<>() {
+            @Override
+            public void write(Chunk<? extends Transaction> items) throws Exception {
+                writeToExcel(items.getItems());
+            }
+
+            private void writeToExcel(List<? extends Transaction> transactions) throws IOException {
+                Workbook workbook = new XSSFWorkbook();
+                Sheet sheet = workbook.createSheet("Transactions");
+
+                // Create Header Row
+                Row headerRow = sheet.createRow(0);
+                headerRow.createCell(0).setCellValue("MQ_Payload");
+                headerRow.createCell(1).setCellValue("Unique_tranx_id");
+
+                int rowIndex = 1;
+                for (Transaction tx : transactions) {
+                    Row row = sheet.createRow(rowIndex++);
+                    row.createCell(0).setCellValue(tx.getMqPayload());
+                    row.createCell(1).setCellValue(tx.getUniqueTranxId());
+                }
+
+                // Generate Filename with Current Timestamp
+                String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+                String fileName = "transaction_" + timestamp + "_data.xlsx";
+
+                // Save Excel File
+                try (FileOutputStream fileOut = new FileOutputStream(fileName)) {
+                    workbook.write(fileOut);
+                }
+                workbook.close();
+
+                System.out.println("Excel file saved as: " + fileName);
+            }
+        };
+    }
+
+
+    // 4️⃣ Define Step
+    @Bean
+    public Step step1(ItemReader<Transaction> reader, ItemWriter<Transaction> writer) throws Exception {
+        return new StepBuilder("step1", jobRepository)
+                .<Transaction, Transaction>chunk(5000, transactionManager)
+                .reader(reader)
+                .writer(writer)
+                .build();
+    }
+
+    // 5️⃣ Define Job
+    @Bean
+    public Job exportJob(Step step1) throws Exception {
+        return new JobBuilder("exportJob", jobRepository)
+                .incrementer(new RunIdIncrementer())
+                .start(step1)
+                .build();
+    }
+
+}
