@@ -1,0 +1,41 @@
+private void writeTransactions(SXSSFSheet sheet, LocalDateTime start, LocalDateTime end) throws IOException {
+        try (Stream<Transaction> transactions = transactionRepository.streamTransactions(start, end)) {
+            writeToSheet(sheet, transactions);
+        }
+        entityManager.clear();  // Clear session to free memory
+    }
+
+    private void writeEventLogs(SXSSFSheet sheet, LocalDateTime start, LocalDateTime end) {
+        try (Stream<EventLog> eventLogs = eventLogRepository.streamEventLogs(start, end)) {
+            writeToSheet(sheet, eventLogs);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        entityManager.clear();
+    }
+
+    private <T> void writeToSheet(SXSSFSheet sheet, Stream<T> dataStream) throws IOException {
+        int rowNum = 0;
+        Row headerRow = sheet.createRow(rowNum++);
+        headerRow.createCell(0).setCellValue("Event ID");
+        headerRow.createCell(1).setCellValue("Create DTS");
+
+        for (T record : (Iterable<T>) dataStream::iterator) {
+            Row row = sheet.createRow(rowNum++);
+            if (record instanceof Transaction) {
+                Transaction t = (Transaction) record;
+                row.createCell(0).setCellValue(t.getEventId());
+                row.createCell(1).setCellValue(t.getCreateDts().toString());
+            } else if (record instanceof EventLog) {
+                EventLog e = (EventLog) record;
+                row.createCell(0).setCellValue(e.getEventId());
+                row.createCell(1).setCellValue(e.getCreateDate().toString());
+            }
+
+            // Clear memory every 10,000 records
+            if (rowNum % 10000 == 0) {
+                sheet.flushRows(10000);
+                entityManager.clear();
+            }
+        }
+    }
